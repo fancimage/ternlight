@@ -1,0 +1,45 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta name="Author" content="flashlizi - www.riaidea.com">
+<meta name="Keywords" content="HTML5,canvas,casual framework">
+<meta name="Description" content="HTML5 canvas experiment">
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>TernLight - Flow-Diagram Framework</title>
+<script type="text/javascript" src="base.js"></script>
+<script type="text/javascript" src="ternlight.js"></script>
+<script type="text/javascript" src="utils.js"></script>
+<script type="text/javascript" src="connector.js"></script>
+<script type="text/javascript" src="action.js"></script>
+<script type="text/javascript" src="command.js"></script>
+
+<script language="javascript">
+   function onload(){
+       var diagram = new tern.Diagram('mycanvas');
+       var rectShape = new tern.RectangleShape();
+       rectShape.x = 20;
+       rectShape.y = 20;
+       rectShape.width = 100;
+       rectShape.height = 100;       
+       diagram.addChild(rectShape);
+       
+       rectShape = new tern.RectangleShape();
+       rectShape.x = 220;
+       rectShape.y = 120;
+       rectShape.width = 100;
+       rectShape.height = 100;
+       diagram.addChild(rectShape);
+       
+       var line = new tern.Connection( [new tern.Point(70,120),new tern.Point(70,170),new tern.Point(220,170)],
+                                  tern.LineType.RightAngle);
+       diagram.addChild(line);
+   }
+</script>
+<body onLoad="onload();">
+<h2>TernLight - Flow-Diagram Framework</h2>
+<div>
+<input id="i1" value="test"/><br>
+<canvas id="mycanvas" width="700" height="500"/>
+</div>
+</body>
+</html>
