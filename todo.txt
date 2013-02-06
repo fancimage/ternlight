@@ -1,0 +1,5 @@
+
+1. label and edit label
+2. drag new shape to the diagram ( from toolbox)
+3. drag connector to create new connection
+4. open source license (*)
