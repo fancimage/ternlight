@@ -22,8 +22,9 @@ tern.classdef('ShapeConnector',tern.Connector,{
     context.strokeStyle = tern.Connector.strokeStyle;
     
     var w = this.width;
-    if(this.__isStress){
+    if(this.__isStress || this._state == tern.ItemState.Hover){
         context.fillStyle = tern.Connector.stressdBrush;
+        w += w;
     }else{
         context.fillStyle = tern.Connector.fillStyle;
     }
@@ -31,12 +32,18 @@ tern.classdef('ShapeConnector',tern.Connector,{
     context.strokeRect(-w,-w ,w+w,w+w);
     context.fillRect(-w,-w ,w+w,w+w);
   },
+  
+  onHovered: function(flag){
+      this._state = (flag ? tern.ItemState.Hover:tern.ItemState.Normal); 
+      if(flag) this.visible = true;
+      else if(!this.parent.isSelected()) this.visible = false;      
+  },
 
   stress: function(flag){
       this.__isStress = flag;
-      var w = tern.Connector.width;
-      if(flag) w += w;
-      this.width = this.height = w;
+      //var w = tern.Connector.width;
+      //if(flag) w += w;
+      //this.width = this.height = w;
   },
 
   move: function(x,y){

@@ -25,6 +25,35 @@ Actions.classdef('MoveAction',tern.MouseAction,{
     this.pointDrager = null;
     this.findedCT = null;     
   },
+  
+  _beginDragConnector: function(ct){
+      this.initialX = this.lastX = ct.x;
+      this.initialY = this.lastY = ct.y;
+        
+      this.pointDrager = ct.beginDrag();
+      if (this.pointDrager == null){
+          if (!ct.draggable) return;
+      }else if (!this.pointDrager.movable()){
+          this.pointDrager.cancel();
+          this.pointDrager = null;
+          return false;
+      }
+        
+      var children = ct.parent.connectors;
+      var index = children.indexOf(ct);
+      if(0 == index) index = 1;
+      else index--;
+       
+      if (index >= 0 && index < children.length){
+          this.fromX = children[index].x;
+          this.fromY = children[index].y;
+      }else{
+          this.fromX = this.initialX;
+          this.fromY = this.initialY;
+      }
+      
+      return true;
+  },
 
   mousedown: function(e){
     if(this.state != Action.States.Unactive) return;
@@ -35,41 +64,42 @@ Actions.classdef('MoveAction',tern.MouseAction,{
         this.initialY = this.lastY = e.mouseY;
         this.activate();        
     }else if(this.diagram._getSelectedConnector() != null){
-        var ct = this.diagram._getSelectedConnector();
-        if(!(ct.parent instanceof tern.Connection)) return;
+        var ct = this.diagram._getSelectedConnector();                        
         
-        this.initialX = this.lastX = ct.x;
-        this.initialY = this.lastY = ct.y;
-        this.pointDrager = ct.beginDrag();
-        if (this.pointDrager == null){
-            if (!ct.draggable) return;
-        }else if (!this.pointDrager.movable()){
-            this.pointDrager.cancel();
-            this.pointDrager = null;
+        if(!(ct.parent instanceof tern.Connection)){
+            if(ct.attachedConnectors.length <= 0) {
+                this.initialX = e.mouseX;
+                this.initialY = e.mouseY;
+                this.activate();
+            }
             return;
-        }
+        }                 
         
-        var children = ct.parent.connectors;
-        var index = children.indexOf(ct);
-        if(0 == index) index = 1;
-        else index--;
-        
-        if (index >= 0 && index < children.length){
-            this.fromX = children[index].x;
-            this.fromY = children[index].y;
-        }else{
-            this.fromX = this.initialX;
-            this.fromY = this.initialY;
-        }
+        if(!this._beginDragConnector(ct) ) return;        
         this.activate();        
     }
   },
 
   mousemove: function(e){
-    if(this.state != Action.States.Active) return;
+    if(this.state != Action.States.Active) {
+        if(this.diagram._ToolDrager.isActive()){
+            this.activate();
+            this.diagram._ToolDrager.move(e.mouseX,e.mouseY,true);
+            this.lastX = e.mouseX;
+            this.lastY = e.mouseY;
+        }
+        return;
+    }
     
     var offsetX = e.mouseX - this.lastX;
     var offsetY = e.mouseY - this.lastY;
+    if(this.diagram._ToolDrager.isActive()){
+        this.diagram._ToolDrager.move(offsetX,offsetY,true);
+        this.lastX = e.mouseX;
+        this.lastY = e.mouseY;
+        return;
+    }
+    
     var selct = this.diagram._getSelectedConnector();
     if(selct == null){
         var sels = this.diagram.getSelectedItems();
@@ -77,6 +107,30 @@ Actions.classdef('MoveAction',tern.MouseAction,{
             sels[i].move(offsetX,offsetY);
         }
     }else{
+        if(selct instanceof tern.ShapeConnector){
+            //create new connection
+            var line = new tern.Connection( [new tern.Point(this.initialX,this.initialY), new tern.Point(e.mouseX,e.mouseY)],
+                               tern.LineType.Straight);
+            line._createConnectors();
+            
+            var addCmd = new tern.Commands.AddRemoveCommand(this.diagram,[line],true);
+            var bindCmd = new tern.Commands.BindConnectorCommand(line.connectors[0],selct, selct, true);            
+            
+            var packageCmd = new tern.Commands.CompoundCommand();
+            packageCmd.addCommand(addCmd);
+            packageCmd.addCommand(bindCmd);  
+            packageCmd.redo();
+            
+            this.diagram.undoManager.addCommand(packageCmd);
+            
+            var ct = line.connectors[1];
+            this.diagram._setSelectedConnector(ct);
+                  
+            this._beginDragConnector(ct);
+            
+            return;
+        }
+    
         var oldFinded = this.findedCT;
         this.findedCT = null;
         
@@ -115,6 +169,11 @@ Actions.classdef('MoveAction',tern.MouseAction,{
     if(this.state != Action.States.Active) return;
     
     this.deActivate();
+    if(this.diagram._ToolDrager.isActive()){
+        this.diagram._ToolDrager.deactive(true);
+        return;
+    }
+    
     if(this.initialX == this.lastX && this.initialY == this.lastY){
         if (this.pointDrager != null){
             this.pointDrager.cancel();
@@ -128,6 +187,8 @@ Actions.classdef('MoveAction',tern.MouseAction,{
     if(selct == null){
         cmd = new tern.Commands.MoveCommand(this.diagram.getSelectedItems(), this.lastX - this.initialX, this.lastY - this.initialY);
     }else{
+        if(selct instanceof tern.ShapeConnector) return;
+        
         if (this.findedCT == null && selct.type == tern.ConnectorType.Endpoint){
             this.findedCT = this.diagram.findConnectorAt(this.lastX,this.lastY,this.fromX,this.fromY);
         }
@@ -187,6 +248,8 @@ Actions.classdef('SectionAction',tern.MouseAction,{
 
   mousedown: function(e){
     if(this.state == Action.States.Unactive){
+        if(tern.Text.current) return;
+        
         this.initialX = e.mouseX;
         this.initialY = e.mouseY;   
 
@@ -255,6 +318,9 @@ Actions.classdef('HitAction',tern.MouseAction, {
                 this.diagram._setSelectedConnector( item );
             }else{
                 this.diagram._setSelectedConnector( null );
+                if( item instanceof tern.Text ){
+                    tern.Text.onclick(item);                    
+                }
             }
         }
     }else{
@@ -277,8 +343,14 @@ Actions.classdef('HoverAction',tern.MouseAction,{
     }
     
     var item = this.diagram.findAt(e.mouseX,e.mouseY);
-    if(item!=this.current){
+    if(item!=this.current){                
         if(this.current!=null) this.current.onHovered(false);
+        
+        if(item==null || !('onHovered' in item)){
+            this.current = null;
+            return;
+        }
+        
         this.current = item;
         if(this.current!=null) this.current.onHovered(true);
     }

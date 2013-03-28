@@ -1,0 +1,69 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta name="Author" content="fancimage">
+<meta name="Description" content="ternlight library">
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<title>TernLight - Flow-Diagram Framework</title>
+<script type="text/javascript" src="../src/base.js"></script>
+<script type="text/javascript" src="../src/ternlight.js"></script>
+<script type="text/javascript" src="../src/utils.js"></script>
+<script type="text/javascript" src="../src/connector.js"></script>
+<script type="text/javascript" src="../src/action.js"></script>
+<script type="text/javascript" src="../src/command.js"></script>
+<script type="text/javascript" src="../src/text.js"></script>
+<script type="text/javascript" src="myshape.js"></script>
+<style>
+     .toolitem{
+         width:80px;
+         height:20px;
+         border:1px solid green;
+         background:#F89E24;
+         font-size: 9pt;
+         text-align:center;
+         padding-top: 4px;
+     }     
+</style>
+<script language="javascript">
+   function onload(){
+       var diagram = new tern.Diagram('mycanvas');
+       var rectShape = new tern.RectangleShape();
+       rectShape.x = 20;
+       rectShape.y = 20;
+       rectShape.width = 100;
+       rectShape.height = 100;       
+       diagram.addChild(rectShape);
+       
+       rectShape = new tern.RectangleShape();
+       rectShape.x = 220;
+       rectShape.y = 120;
+       rectShape.width = 100;
+       rectShape.height = 100;
+       diagram.addChild(rectShape);
+       
+       var line = new tern.Connection( [new tern.Point(70,120),new tern.Point(70,170),new tern.Point(220,170)],
+                                  tern.LineType.RightAngle);
+       diagram.addChild(line);
+       
+       //init toolboxes
+       diagram.toolbox('shape1','drager1',tern.RectangleShape);
+       diagram.toolbox('shape2','drager2',terntest.MyShape);  //custom
+   }
+</script>
+<body onLoad="onload();">
+<h2>TernLight - Flow-Diagram Framework</h2>
+
+<div style="width:200px;height:10px;margin-bottom:8px">
+<div id="shape1" class="toolitem" style="float:left">Rectangle</div>
+<div id="drager1" style="width:80px;height:24px;border:2px solid green;"></div>
+
+<div id="shape2" class="toolitem" style="float:right">MyShape</div>
+<div id="drager2" style="width:80px;height:24px;border:2px solid green;"></div>
+</div>
+<br>
+
+<div>
+<canvas id="mycanvas" width="700" height="500"/>
+</div>
+</body>
+</html>

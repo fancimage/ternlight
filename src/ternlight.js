@@ -95,6 +95,7 @@ tern.classdef('Diagram',tern.UIContainer,{
     this.__timerid = null;
     this.__interval = -1;
     this.undoManager = new tern.UndoManager();
+    this._ToolDrager = new tern._ToolDrager(this);
     
     this.__moveX = 0;
     this.__moveY = 0;
@@ -183,7 +184,7 @@ tern.classdef('Diagram',tern.UIContainer,{
       }
       
       if(handled){
-          event.preventDefault();
+          if(e.preventDefault) e.preventDefault();
       }
   },
   
@@ -194,7 +195,7 @@ tern.classdef('Diagram',tern.UIContainer,{
           
           this.__moveX = 0;
           this.__moveY = 0;
-          event.preventDefault();
+          if(e.preventDefault) e.preventDefault();
       }
   },
   
@@ -216,8 +217,8 @@ tern.classdef('Diagram',tern.UIContainer,{
         func(this.actions[i]);
     }
     
-    if(event.preventDefault) event.preventDefault();
-  	if(event.stopPropagation) event.stopPropagation();    
+    if(e.preventDefault) e.preventDefault();
+  	if(e.stopPropagation) e.stopPropagation();
   },
 
   drawBackGround: function(context) {
@@ -357,6 +358,126 @@ tern.classdef('Diagram',tern.UIContainer,{
       this.undoManager.addCommand(cmd);
       cmd.redo();
   },
+  
+  toolbox: function(obj,target,itemClass){
+      if(!obj || !target || !itemClass) return;
+      
+      var diagram = this;
+      var canvas = this.context.canvas;
+      if (typeof obj == "string") {
+          obj = document.getElementById(obj);
+      }
+      
+      if (typeof target == "string") {
+          target = document.getElementById(target);
+          target.style.position = 'absolute';
+          target.style.display = 'none';
+          target.style.zIndex = 1000;
+          //target.orig_index = obj.style.zIndex;
+      }
+      
+      obj.onmousedown = function (a) {
+          if (!a) a = window.event;
+          
+          var x = a.clientX - document.body.scrollLeft - obj.offsetLeft; 
+          var y = a.clientY - document.body.scrollTop - obj.offsetTop;
+          target.style.left = (a.clientX + document.body.scrollLeft - x)+'px';
+          target.style.top = (a.clientY + document.body.scrollTop - y)+'px';
+                    
+          diagram._ToolDrager.active(target,itemClass,x,y);
+          
+          document.onmousemove = function (a) {              
+              if (!a) a = window.event;                            
+              
+              var left = a.clientX + document.body.scrollLeft - x;
+              var top = a.clientY + document.body.scrollTop - y;              
+              diagram._ToolDrager.move(left,top,false);
+          };
+          
+          document.onmouseup = function () {
+              diagram._ToolDrager.deactive();
+          };
+    }
+  },
+  
+});
+
+tern.classdef('_ToolDrager',{
+    _ToolDrager: function(diagram){
+        this.diagram = diagram;
+        this.deactive();  
+    },
+    
+    active: function(target,itemClass,offsetx,offsety){
+        this.target = target;
+        this.itemClass = itemClass;
+        this._active = true;
+        this._offsetX = offsetx;
+        this._offsetY = offsety;
+        
+        this.target.style.cursor = "move";
+        this.target.style.display = 'block';
+    },
+    
+    deactive: function(inDiagram){
+        if(inDiagram){
+            var addCmd = new tern.Commands.AddRemoveCommand(this.diagram,[this.item],true);
+            this.diagram.undoManager.addCommand(addCmd);
+        } else if(this.item){
+            this.diagram.removeChild(this.item);
+        }
+        
+        if(this.target){
+            this.target.style.cursor = "normal";
+            this.target.style.display = 'none';
+        }
+        
+        this.target = null;
+        this.itemClass = null;
+        this.item = null;
+        this._active = false;
+        this._inDiagram = false;
+        
+        document.onmousemove = null;
+        document.onmouseup = null;
+    },
+    
+    isActive: function(){return this._active;},
+    
+    move: function(x,y,inDiagram){
+        if(inDiagram){
+            if(!this._inDiagram){
+                 if(null == this.item){
+                     this.item = new this.itemClass();
+                     this.diagram.addChild(this.item);
+                     this.target.style.display = 'none';
+                     
+                     x -= this._offsetX;
+                     y -= this._offsetY;
+                 }
+                 this.item.visible = true;
+                 this._inDiagram = true;
+                 this.diagram.setSelectedItems(this.item);
+            }
+            this.item.move(x,y);
+        } else {
+            this.target.style.left = x + 'px';
+            this.target.style.top = y + 'px';
+            
+            var canvas = this.diagram.context.canvas;
+            if(x > canvas.offsetLeft && y>canvas.offsetTop 
+                  && x < canvas.offsetLeft+canvas.width && y<canvas.offsetTop+canvas.height){
+                this.target.style.display = 'none';
+            } else if(this._inDiagram){
+                if(this.item!=null) this.item.visible = false;
+                this.target.style.display = 'block';
+                this._inDiagram = false;
+            }
+        }
+        
+        //if(event && event.preventDefault) event.preventDefault();
+  	    //if(event && event.preventDefault) event.stopPropagation(); 
+    },
 });
 
 tern.ItemState = {
@@ -611,9 +732,13 @@ tern.classdef('Connector',tern.UIElement,{
 
   getState: function(){return this._state;},
 
-  onHovered: function(flag){this._state = flag?tern.ItemState.Hover:tern.ItemState.Normal;},
+  onHovered: function(flag){
+      this._state = (flag && this.visible ? tern.ItemState.Hover:tern.ItemState.Normal);      
+  },
 
-  onSelectedStateChanged: function(flag){this.visible = flag;},
+  onSelectedStateChanged: function(flag){
+      this.visible = flag;
+  },
   stress: function(flag){},
   beginDrag: function(){return null;},
 });
@@ -740,6 +865,7 @@ tern.classdef('Connection',tern.DiagramItem,{
     }
     
     //draw the Arrow
+    this._createArrow(context);
     
     context.stroke();
     
@@ -881,6 +1007,75 @@ tern.classdef('Connection',tern.DiagramItem,{
         i++;
     }
   },
+  
+  _createArrow: function(context){
+     
+     var arrowWidth  = 4;   //arrowSize
+     var arrowHeight = 8;
+     
+     var idx = this.connectors.length-2;
+     var x1 = this.connectors[idx].x;
+     var y1 = this.connectors[idx].y;
+     var x2 = this.connectors[idx+1].x;
+     var y2 = this.connectors[idx+1].y;
+     
+     var cpX1,cpX2,cpY1,cpY2;
+     
+     if(0 == x1 - x2){         
+         if(y1 < y2){
+             cpX1 = x2 - arrowWidth;             
+             cpX2 = x2 + arrowWidth;
+             cpY1 = cpY2 = y2 - arrowHeight;             
+         } else{
+             cpX1 = x2 - arrowWidth;
+             cpX2 = x2 + arrowWidth;
+             cpY1 = cpY2 = y2 + arrowHeight;             
+         }
+     } else if(0 == y1 - y2){
+         if(x1 < x2){
+             cpX1 = cpX2 = x2 - arrowHeight;
+             cpY1 = y2 - arrowWidth;
+             cpY2 = y2 + arrowWidth;
+         } else {
+             cpX1 = cpX2 = x2 + arrowHeight;
+             cpY1 = y2 - arrowWidth;
+             cpY2 = y2 + arrowWidth;
+         }
+     }else{
+         var k = (1.0 * (y1-y2) ) / (x1-x2);
+         var xOffset = arrowHeight/(Math.sqrt(1+ k*k));
+         
+         cpX1 = x2 + xOffset;
+         cpY1 = y2 + k*xOffset;
+         cpX2 = x2 - xOffset;
+         cpY2 = y2 - k*xOffset;
+         
+         k = (-1.0) / k;
+         xOffset = arrowWidth / (Math.sqrt(1 + k * k));
+         
+         var d1 = (cpX1 - x1) * (cpX1 - x1) + (cpY1 - y1) * (cpY1 - y1);
+         var d2 = (cpX2 - x1) * (cpX2 - x1) + (cpY2 - y1) * (cpY2 - y1);
+         if (d1 < d2){
+             cpX2 = Math.round(cpX1 - xOffset);
+             cpY2 = Math.round(cpY1 - k*xOffset);
+             
+             cpX1 = Math.round(cpX1 + xOffset);  //note: cpX1 changed
+             cpY1 = Math.round(cpY1 + k*xOffset);
+         } else {
+             cpX1 = Math.round(cpX2 + xOffset);
+             cpY1 = Math.round(cpY2 + k*xOffset);
+             
+             cpX2 = Math.round(cpX2 - xOffset);
+             cpY2 = Math.round(cpY2 - k*xOffset);
+         }
+         
+     }
+     
+     context.moveTo(cpX1,cpY1);
+     context.lineTo(x2,y2);
+     context.lineTo(cpX2,cpY2);
+  }
+  
 });
 
 /*
@@ -904,7 +1099,7 @@ tern.classdef('RectangleShape',tern.Shape,{
   RectangleShape: function(){
     tern.Shape.call(this);
     this.width = 100;
-    this.height = 100;     
+    this.height = 100;         
   },
 
   paint: function(context) {
