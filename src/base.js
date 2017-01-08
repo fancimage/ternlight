@@ -54,7 +54,7 @@ var classdef = function(){
     }
     
     return myclass;
-}
+};
 
 var namespace = function(name){
     if(name) {
@@ -77,6 +77,16 @@ window.namespace = namespace;
 var tern = namespace('tern');
 
 window.tern = tern;
+tern.isAssignableFrom = function(type1,type2){
+    if(!type2) return false;
+
+    while(type1 && type1.superClass){
+        if(type1.superClass.constructor === type2) return true;
+        type1 = type1.superClass.constructor;
+    }
+
+    return false;
+};
 
 tern.delegate = function(func, instance){
 	var context = instance || window;
@@ -198,7 +208,15 @@ tern.classdef('UIElement',{
         context.canvas.width = 0;
         context.canvas.width = 1;
         return false;
-    }
+    },
+
+    getDiagram: function(){
+        var p = this;
+        while(p){
+            if(p instanceof tern.Diagram) return p;
+            p = p.parent;
+        }
+    },
 });
 
 //internal-hidden canvas for elements(not rectangle) hit testing
@@ -224,8 +242,7 @@ tern.classdef('UIContainer', tern.UIElement, {
     },
     
     findElementsIn: function(x,y,width,height,handler){
-        if(handler) var ret = false;
-        else var ret = [];
+        var ret = [];
         
         x -= this.x;
         y -= this.y;
@@ -233,22 +250,24 @@ tern.classdef('UIContainer', tern.UIElement, {
         for(var i = this.children.length-1; i >= 0; i--){
             var child = this.children[i];
             if(child == null || !child.visible) continue;
-            
+
             if((child instanceof tern.UIContainer) && child.children.length > 0){
                 var objs = child.findElementsIn(x,y,width,height,handler);
-                if(objs){
+                if(objs && objs.length>0){
                     if(handler){
+                        if(!handler(objs)) return false;
                         ret = true;
                     }else{
                         ret = ret.concat(objs);
                     }
-                    continue;
-                }                
+                } else if(objs === false){
+                    return false;
+                }
             }
-            
+
             if(child.testInRect(x,y,width,height,true)){
                 if(handler){                    
-                    if(!handler(child)) return true;
+                    if(!handler(child)) return false;
                     ret = true;
                 }else{
                     ret.push(child);
@@ -266,7 +285,10 @@ tern.classdef('UIContainer', tern.UIElement, {
         child.parent = this;
         if(index<0 || index >= this.children.length) this.children.push(child);
         else this.children.splice(index, 0, child);
-        
+
+        if(this._events){
+            this._events.trigger('onAdded',child);
+        }
         return child;
     },
     
@@ -278,6 +300,9 @@ tern.classdef('UIContainer', tern.UIElement, {
         
         this.children[index].parent = null;
         this.children.splice(index, 1);
+        if(this._events){
+            this._events.trigger('onRemoved',child);
+        }
         return true;
     },
     
@@ -287,6 +312,53 @@ tern.classdef('UIContainer', tern.UIElement, {
         }
         this.children.splice(0);
     }
+});
+
+tern.Events = classdef('Events',{
+    Events: function(){
+        this._events = {};
+    },
+    bind: function(name,fn,ins){
+        if(name==null || fn==null) return false;
+        var obj = this._events[name];
+        if(!obj) {
+           this._events[name] = obj = [];
+        }
+
+        if(ins) fn = tern.delegate(fn,ins);
+
+        obj.push(fn);
+        return true;
+    },
+
+    unbind: function(name,fn){
+        if(name==null) return;
+        var obj = this._events[name];
+        if(obj){
+            if(null == fn){
+                delete this._events[name];
+                return;
+            }
+
+            for(var i=obj.length-1;i>=0;i--){
+                if(fn == obj[i]){
+                    obj.splice(i,1);
+                }
+            }
+        }
+    },
+
+    trigger: function(name){
+        if(name==null) return;
+        var obj = this._events[name];
+        if(obj){
+            var leftArgs = Array.prototype.slice.call(arguments, 1);
+            for(var i=0;i<obj.length;i++){
+                if(false === obj[i].apply(window,leftArgs)) return false;
+            }
+        }
+        return true;
+    },
 });
 
 })(window);

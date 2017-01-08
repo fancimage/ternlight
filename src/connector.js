@@ -72,6 +72,77 @@ tern.classdef('ShapeConnector',tern.Connector,{
         this.attachedConnectors.splice(idx, 1);
     }
   },
+
+  connectTo: function(ct,polys){
+      if(ct == null || ct.type != tern.ConnectorType.Attachable || this==ct) return null;
+
+      var line = null;
+      if(null == polys){
+          line = new tern.Connection([this.getPoint(),ct.getPoint()],tern.LineType.Straight);
+      } else {
+          polys=polys.split(',');
+          var points = [this.getPoint()];
+
+          var current = points[0];
+          var last = ct.getPoint();
+          for(var i=0;i<polys.length;i++){
+              var s = polys[i];
+              if(s==null ||s==''){
+                  throw Error("connector.connectTo:illegal arguments!");
+              }
+
+              if(s == 'v'){
+                  var p = new tern.Point(current.x,last.y);
+                  if(current.x != p.x || current.y != p.y){
+                      points.push(p);
+                  }
+                  break;
+              }
+              else if(s == 'h'){
+                  var p = new tern.Point(last.x,current.y);
+                  if(current.x != p.x || current.y != p.y){
+                      points.push(p);
+                  }
+                  break;
+              }
+              else{
+                  var pre = s.substr(0,1);
+                  var left = s.substr(1);
+                  var n = parseInt(s);
+                  if( isNaN(n) ){
+                      n = parseInt(left);
+                      if( isNaN(n) ){
+                          throw Error("connector.connectTo:illegal arguments("+polys+")!");
+                      }
+                  } else {
+                      pre = 'v'; //default
+                  }
+
+                  if(pre=='h'){
+                      p = new tern.Point(current.x+n,current.y);
+                  } else {
+                      p = new tern.Point(current.x,current.y+n);
+                  }
+
+                  if(p.x == last.x && p.y==last.y){
+                      break;
+                  }
+                  points.push(p);
+                  current = p;
+              }
+          }
+
+          points.push(last);
+          line = new tern.Connection(points,tern.LineType.RightAngle);
+      }
+
+      line._createConnectors();
+
+      this.addAttached(line.connectors[0]);
+      ct.addAttached(line.connectors[line.connectors.length-1]);
+      return line;
+  },
+
 });
 
 tern.classdef('LineConnector',tern.Connector,{
@@ -81,11 +152,18 @@ tern.classdef('LineConnector',tern.Connector,{
     tern.Connector.call(this,x,y);
     if(!type) this.type = tern.ConnectorType.Endpoint;
     else this.type = type;
-    this.attachable = false;
+    this.attachable = tern.AttachType.None;
     
     if(type == tern.ConnectorType.Endpoint){
         this.width = this.height = tern.Connector.width;
     }
+  },
+
+  isStartPoint: function(){
+      if(this.parent && this.parent.connectors){
+          if(this == this.parent.connectors[0]) return true;
+      }
+      return false;
   },
 
   paint: function(context) {

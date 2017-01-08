@@ -96,6 +96,7 @@ tern.classdef('Diagram',tern.UIContainer,{
     this.__interval = -1;
     this.undoManager = new tern.UndoManager();
     this._ToolDrager = new tern._ToolDrager(this);
+    this._events = new tern.Events();
     
     this.__moveX = 0;
     this.__moveY = 0;
@@ -118,7 +119,23 @@ tern.classdef('Diagram',tern.UIContainer,{
     canvas.onkeyup = tern.delegate(this._onKeyUp, this);
     canvas.onkeydown = tern.delegate(this._onKeyDown, this);
     if(0 > canvas.tabIndex) canvas.tabIndex = 0; //get focus!
+
+    this._offsetX = null;
+    this._offsetY = null;
   },
+
+  resize: function(w,h){
+      if(w < 100) w=100;
+      if(h<100) h=100;
+
+      this.width = w;
+      this.height=h;
+
+      var canvas = this.context.canvas;
+      canvas.width = w;
+      canvas.height = h;
+  },
+
   
   setMaxFrameRate:function(count){
       if(count <= 0) count = 20;
@@ -176,6 +193,7 @@ tern.classdef('Diagram',tern.UIContainer,{
               for(var i=0;i<this.__selItems.length;i++){
                   this.__selItems[i].move(x,y);
               }
+              this._events.trigger('onMove',this.__selItems);
               
               this.__moveX += x;
               this.__moveY += y;
@@ -198,23 +216,53 @@ tern.classdef('Diagram',tern.UIContainer,{
           if(e.preventDefault) e.preventDefault();
       }
   },
+
+  offset: function(){
+      var p = this.context.canvas;
+      var sx =0,sy = 0;
+      while(p){
+          sx += p.scrollLeft;
+          sy += p.scrollTop;
+
+          p = p.parentElement;
+          if(p == document.body) break;
+      }
+
+      this._offsetX=null;
+      if(null == this._offsetX){
+          p = this.context.canvas;
+          this._offsetX = this._offsetY = 0;
+          while(p){
+              this._offsetX += p.offsetLeft;
+              this._offsetY += p.offsetTop;
+
+              p = p.offsetParent;
+          }
+      }
+
+      return new tern.Point(this._offsetX-sx,this._offsetY-sy);
+  },
   
   _onMouseEvent: function(e){
     var canvas = this.context.canvas;
     if(e.type == 'mouseup'){
         canvas.focus();
     }
+
+    var p = this.offset();
         
-    e.mouseX = e.pageX - canvas.offsetLeft;
-	e.mouseY = e.pageY - canvas.offsetTop;
+    e.mouseX = e.pageX - p.x;//canvas.offsetLeft;
+	e.mouseY = e.pageY - p.y;//canvas.offsetTop;
     
     var func = function(a){
         f = a[e.type];
-        if(f) f.call(a,e);
+        if(f){
+            if(f.call(a,e)===true) return true;
+        }
     }
 
     for(var i=0;i< this.actions.length;i++){
-        func(this.actions[i]);
+        if(true === func(this.actions[i])) break;
     }
     
     if(e.preventDefault) e.preventDefault();
@@ -222,12 +270,16 @@ tern.classdef('Diagram',tern.UIContainer,{
   },
 
   drawBackGround: function(context) {
-    //context.fillStyle ="#ffff00";
-    var gradient = context.createLinearGradient(this.width/2, 0,this.width/2,this.height);
-    gradient.addColorStop(0,"#E2EBEF");
-    gradient.addColorStop(1,"#5DA3D4");
-    context.fillStyle = gradient;
-    context.fillRect(0, 0,this.width,this.height);
+    if(this.backgroundColor){
+        context.fillStyle = this.backgroundColor;
+        context.fillRect(0, 0,this.width,this.height);
+    } else {
+        var gradient = context.createLinearGradient(this.width/2, 0,this.width/2,this.height);
+        gradient.addColorStop(0,"#E2EBEF");
+        gradient.addColorStop(1,"#5DA3D4");
+        context.fillStyle = gradient;
+        context.fillRect(0, 0,this.width,this.height);
+    }
   },
 
   paint: function(context) {
@@ -286,12 +338,26 @@ tern.classdef('Diagram',tern.UIContainer,{
     if(items != null){
         for(var i=0;i<items.length;i++){
             var item = items[i];
-            if(!item.isSelected()){
-                item.onSelectedStateChanged(true);
+            if(item instanceof tern.DiagramItem){
+                if( !item.isSelected()){
+                    item.onSelectedStateChanged(true);
+                }
+                this.__selItems[this.__selItems.length] = item;
             }
-            this.__selItems[this.__selItems.length] = item;
         }
     }
+
+    this._events.trigger('onSelectedChange',this.__selItems);
+  },
+
+  selectedChange: function(fn){
+      this._events.bind('onSelectedChange',fn,this);
+      return this;
+  },
+
+  bind: function(name,fn){
+      this._events.bind(name,fn,this);
+      return this;
   },
 
   findConnectorAt: function(x1,y1,x2,y2){
@@ -318,12 +384,21 @@ tern.classdef('Diagram',tern.UIContainer,{
   findAt: function(x,y){
     //in order to select item easily,expand point to rect
     var item = null;//this.findItemsIn(x,y,0,0,true);
-    this.findElementsIn(x,y,1,1,
-        function(child){
-            item = child;
-            return false;
+    if(this.__selItems && this.__selItems.length==1
+        && (this.__selItems[0] instanceof tern.Connection)){
+        if(this.__selItems[0].testInRect(x,y,1,1,true)){
+            item = this.__selItems[0];
         }
-    );
+    }
+
+    if(item == null){
+        this.findElementsIn(x,y,1,1,
+            function(child){
+                item = child;
+                return false;
+            }
+        );
+    }
     
     if(null != item && (item instanceof tern.DiagramItem)){
         var ct = item.findConnector(x,y,0,0);
@@ -351,7 +426,10 @@ tern.classdef('Diagram',tern.UIContainer,{
   
   __deleteSelected: function(isCut){
       if(this.__selItems.length<=0) return;
-      
+
+      if(false === this._events.trigger('onBeforeRemoved',this.__selItems) ){
+          return;
+      }
       if(isCut) this.copy();
       
       cmd = new tern.Commands.AddRemoveCommand(this, this.__selItems, false);
@@ -360,37 +438,94 @@ tern.classdef('Diagram',tern.UIContainer,{
   },
   
   toolbox: function(obj,target,itemClass){
-      if(!obj || !target || !itemClass) return;
+      if(!obj || !itemClass) return;
+      if(typeof(itemClass) != 'function') return;
       
       var diagram = this;
       var canvas = this.context.canvas;
       if (typeof obj == "string") {
           obj = document.getElementById(obj);
       }
-      
-      if (typeof target == "string") {
+
+      if(target==null){
+          target = obj.cloneNode(true);
+          target.style.width = obj.clientWidth+'px';
+          target.style.height = obj.clientHeight+'px';
+      } else if (typeof target == "string") {
           target = document.getElementById(target);
           target.style.position = 'absolute';
           target.style.display = 'none';
-          target.style.zIndex = 1000;
           //target.orig_index = obj.style.zIndex;
       }
-      
+
+      if(!obj || !target) return;
+
+      var thisx = obj.offsetLeft;
+      var thisy = obj.offsetTop;
+      var p = obj.offsetParent;
+      while(p){
+          thisx += p.offsetLeft;
+          thisy += p.offsetTop;
+          p = p.offsetParent;
+      }
+
+      var _style=target.style;
+      _style.zIndex = 1000;
+      _style.mozUserSelect='none';
+      _style.userSelect='none';
+      _style.KhtmlUserSelect='none';
+
       obj.onmousedown = function (a) {
           if (!a) a = window.event;
-          
-          var x = a.clientX - document.body.scrollLeft - obj.offsetLeft; 
-          var y = a.clientY - document.body.scrollTop - obj.offsetTop;
-          target.style.left = (a.clientX + document.body.scrollLeft - x)+'px';
-          target.style.top = (a.clientY + document.body.scrollTop - y)+'px';
+
+          if(null == diagram._offsetX){
+              p = canvas;
+              while(p){
+                  diagram._offsetX += p.offsetLeft;
+                  diagram._offsetY += p.offsetTop;
+
+                  p = p.offsetParent;
+              }
+          }
+
+          var ghost = document.getElementById('dragHelper');
+          if(null == ghost){
+             ghost = document.createElement('div');
+             ghost.id = 'dragHelper';
+             _style = ghost.style;
+             if (window.ActiveXObject) {
+                ghost.unselectable='on';
+             } else {
+                 _style.mozUserSelect='none';//-webkit-user-select: none;
+                 _style.userSelect='none';
+                 _style.KhtmlUserSelect='none';
+             }
+             _style.position='absolute';
+             _style.display='none';
+             _style.cursor='move';
+             _style.listStyle='none';
+             _style.overflow='hidden';
+             _style.textAlign='center';
+             _style.zIndex=2000;
+
+             document.body.appendChild(ghost);
+          }
+          ghost.innerHTML='';
+          ghost.appendChild(target);
+
+          var x = a.clientX - thisx;// - document.body.scrollLeft - obj.offsetLeft;
+          var y = a.clientY - thisy;// - document.body.scrollTop - obj.offsetTop;
+          _style = ghost.style;
+          _style.left = (thisx)+'px';//(a.clientX)+'px';
+          _style.top =  (thisy)+'px';//(a.clientY)+'px';
                     
-          diagram._ToolDrager.active(target,itemClass,x,y);
+          diagram._ToolDrager.active(ghost,itemClass,x,y);
           
           document.onmousemove = function (a) {              
               if (!a) a = window.event;                            
               
-              var left = a.clientX + document.body.scrollLeft - x;
-              var top = a.clientY + document.body.scrollTop - y;              
+              var left = a.clientX -x;//a.clientX + document.body.scrollLeft - x;
+              var top = a.clientY -y;//a.clientY + document.body.scrollTop - y;
               diagram._ToolDrager.move(left,top,false);
           };
           
@@ -448,7 +583,16 @@ tern.classdef('_ToolDrager',{
         if(inDiagram){
             if(!this._inDiagram){
                  if(null == this.item){
-                     this.item = new this.itemClass();
+                     if(tern.isAssignableFrom(this.itemClass,tern.UIElement)){
+                         this.item = new this.itemClass();
+                     } else {
+                         this.item = this.itemClass();
+                         if(!(this.item instanceof tern.UIElement)){
+                             alert('工具箱类型错误!');
+                             return;
+                         }
+                     }
+
                      this.diagram.addChild(this.item);
                      this.target.style.display = 'none';
                      
@@ -460,13 +604,14 @@ tern.classdef('_ToolDrager',{
                  this.diagram.setSelectedItems(this.item);
             }
             this.item.move(x,y);
+            this.diagram._events.trigger('onMove',[this.item]);
         } else {
             this.target.style.left = x + 'px';
             this.target.style.top = y + 'px';
             
             var canvas = this.diagram.context.canvas;
-            if(x > canvas.offsetLeft && y>canvas.offsetTop 
-                  && x < canvas.offsetLeft+canvas.width && y<canvas.offsetTop+canvas.height){
+            if(x > this.diagram._offsetX && y>this.diagram._offsetY
+                  && x < this.diagram._offsetX+canvas.width && y<this.diagram._offsetY+canvas.height){
                 this.target.style.display = 'none';
             } else if(this._inDiagram){
                 if(this.item!=null) this.item.visible = false;
@@ -705,8 +850,14 @@ tern.ConnectorType = {
     Endpoint:  2,   // line's from or to point
     RightAngle: 3,  //in the poly line
     Middle:     4   //in the line
-}
+};
 
+tern.AttachType = {
+    None: 0,
+    Out:  1,
+    In:   2,
+    Both: 3,
+};
 /*
  * Connector class
  */
@@ -725,7 +876,7 @@ tern.classdef('Connector',tern.UIElement,{
     this.type = tern.ConnectorType.Attachable;
     this.visible = false;
     this.draggable = true;
-    this.attachable = true;
+    this.attachable = tern.AttachType.Both;
     this.attachTo = null;
     this._state = tern.ItemState.Normal;
   },
@@ -736,17 +887,35 @@ tern.classdef('Connector',tern.UIElement,{
       this._state = (flag && this.visible ? tern.ItemState.Hover:tern.ItemState.Normal);      
   },
 
+  canAttached: function(ct){
+      if(this.attachable==tern.AttachType.None || ct==null
+       || ct.type != tern.ConnectorType.Endpoint){
+           return false;
+       }
+
+       if(this.attachable == tern.AttachType.Both) return true;
+
+       var isOut = ct.isStartPoint();
+       if( (isOut && this.attachable == tern.AttachType.Out)
+           || (!isOut && this.attachable == tern.AttachType.In) ){
+           return true;
+       }
+
+       return false;
+  },
+
   onSelectedStateChanged: function(flag){
       this.visible = flag;
   },
   stress: function(flag){},
   beginDrag: function(){return null;},
+  getPoint:function(){return new tern.Point(this.parent.x+this.x,this.parent.y+this.y);},
 });
  
 tern.LineType = {
     Straight: 1,
     RightAngle: 2
-}
+};
  
  /*
  * Connection class
@@ -769,6 +938,58 @@ tern.classdef('Connection',tern.DiagramItem,{
     this._init();
   },
 
+  getPointsString: function(){
+      var points = this.points;
+      if(this.connectors.length <= 0  && points.length <=2 ) return '';
+
+      if(this.connectors.length > 0){
+          var points = [];
+          for(var i=0;i<this.connectors.length;i++){
+              var ct = this.connectors[i];
+              if(ct.type==tern.ConnectorType.Endpoint
+              || ct.type==tern.ConnectorType.RightAngle){
+                  points.push(new tern.Point(ct.x,ct.y));
+              }
+          }
+          this.points = points;
+      }
+
+      if(points.length <=2) return '';
+
+      var p1 = points[0],p2 = points[1],p3 = null;
+      var s = '';
+      var len = null;
+      for(var i=2;i<points.length;i++){
+          p3 = points[i]
+          if(p1.x == p2.x){
+              if(p1.y == p2.y){
+                  p1 = p2;
+                  p2 = p3;
+                  continue;
+              }
+
+              if(len !== null){
+                  s=s+(len+',');
+                  len = null;
+              }
+              s =s+ 'v';
+              len = p2.y - p1.y;
+          } else {
+              if(len !== null){
+                  s=s+(len+',');
+                  len = null;
+              }
+              s =s+ 'h';
+              len = p2.x - p1.x;
+          }
+
+          p1 = p2;
+          p2 = p3;
+      }
+
+      return s;
+  },
+
   _init: function() {
     /*check points*/
     var isAngle = (tern.LineType.RightAngle == this.type);
@@ -779,13 +1000,13 @@ tern.classdef('Connection',tern.DiagramItem,{
         if(isAngle){
             if( i == this.points.length - 2 ){
                 var mTo = this.points[this.points.length - 1];
-                if( mTo.x != current.x || mTo.y != current.y ){
-                    if(pre.x != current.x || mTo.y != current.y){
+                if( mTo.x != current.x && mTo.y != current.y ){
+                    if(pre.x != current.x && mTo.y != current.y){
                         if( Math.abs(pre.x-mTo.x) < Math.abs(pre.y-mTo.y) ){
                             current = new tern.Point(mTo.x, pre.y);
                         }
                         else{
-                            current = new Point(pre.x, mTo.y);
+                            current = new tern.Point(pre.x, mTo.y);
                         }
                     }
                 }
@@ -811,7 +1032,7 @@ tern.classdef('Connection',tern.DiagramItem,{
                 var second = this.points[i - 1];
                 if (((first.x == second.x) && (second.x == current.x))  //in one horizontal line
                       || ((first.y == second.y) && (second.y == current.y))){
-                    this.points.splice(i - 1);  //it is no use!
+                    this.points.splice(i - 1,1);  //it is no use!
                     continue;
                 }
             }
@@ -918,6 +1139,36 @@ tern.classdef('Connection',tern.DiagramItem,{
     }
   },
 
+  getStartShape: function(){
+      if(this.connectors && this.connectors.length > 0){
+          var ct = this.connectors[0].attachTo;
+          if(ct && ct.parent instanceof tern.Shape){
+              return ct.parent;
+          }
+      }
+      return null;
+  },
+  getEndShape: function(){
+      if(this.connectors && this.connectors.length > 1){
+          var ct = this.connectors[this.connectors.length-1].attachTo;
+          if(ct && ct.parent instanceof tern.Shape){
+              return ct.parent;
+          }
+      }
+      return null;
+  },
+
+  convert: function(type){
+      if(type === this.type || this.connectors.length <= 0) return;
+
+      var diagram = this.getDiagram();
+      if(diagram){
+          var cmd = new tern.Commands.ConvertConnectionCommand(this);
+          diagram.undoManager.addCommand(cmd);
+          cmd.redo();
+      }
+  },
+
   adjust: function(){
     if(this.connectors.length < 2) return;
     var isAngle = (tern.LineType.RightAngle == this.type);
@@ -936,8 +1187,8 @@ tern.classdef('Connection',tern.DiagramItem,{
             
             if( i == this.connectors.length-2 ){
                 var mTo = this.connectors[this.connectors.length - 1];
-                if(mTo.x != current.x || pre.y != current.y){
-                    if(pre.x != current.x || mTo.y != current.y){
+                if(mTo.x != current.x && pre.y != current.y){
+                    if(pre.x != current.x && mTo.y != current.y){
                         if (Math.abs(pre.x - mTo.x) < Math.abs(pre.y - mTo.y)){
                             current.x = mTo.x;
                             current.y = pre.y;

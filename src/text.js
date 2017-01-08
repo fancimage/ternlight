@@ -19,13 +19,8 @@ tern.classdef('Text',tern.UIElement,{
     },
     
     edit: function(){  /*begin to edit...*/
-        var diagram = this.parent;
-        while(diagram && !(diagram instanceof tern.Diagram)){
-            diagram = diagram.parent;
-        }
-        
+        var diagram = this.getDiagram();
         if(!diagram) return;
-        diagram = diagram.context.canvas;
         
         this.editing = true;
         //tern.Text.editing = true;
@@ -41,17 +36,22 @@ tern.classdef('Text',tern.UIElement,{
                 if(tern.Text.current){
                     tern.Text.current._unedit();
                 }
-            }
+            };
+            var that = this;
+            textbox.onchange = function(){
+                diagram._events.trigger('onTextChange',that,this.value);
+            };
         }       
 
         var point = this.pointToGlobal(0,0);
+        var offset = diagram.offset();
         
         textbox.style.display = 'block';
         textbox.style.width = (this.width + 8) + 'px';
         textbox.style.height = (this.height + 4) + 'px';
         textbox.style.position  = 'absolute';
-        textbox.style.left = (diagram.offsetLeft+point.x)+'px';
-        textbox.style.top = (diagram.offsetTop+point.y) + 'px';
+        textbox.style.left = (offset.x+point.x)+'px';
+        textbox.style.top = (offset.y+point.y) + 'px';
         //tern.Text._textbox.style="display:block;width="+this.width+"px;height:"+this.height+"px;float:true";
         textbox.value = this.text;
         textbox.focus();
@@ -126,12 +126,17 @@ tern.Text.onclick = function(item){
         if(now - tern.Text._lasttime < 2000){
             tern.Text.current = item;
             item.edit();
+            return true;
+        } else {
+            tern.Text._lasttime = now;
         }
     }else{
         tern.Text._lasttime = (new Date()).getTime();
     }
 
     tern.Text._currText = item;//alert(item.text);
+
+    return false;
 }
     
 })();
