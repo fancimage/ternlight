@@ -5,13 +5,7 @@
 <meta name="Description" content="ternlight library">
 <meta http-equiv="content-type" content="text/html; charset=utf-8" />
 <title>TernLight - Flow-Diagram Framework</title>
-<script type="text/javascript" src="../src/base.js"></script>
-<script type="text/javascript" src="../src/ternlight.js"></script>
-<script type="text/javascript" src="../src/utils.js"></script>
-<script type="text/javascript" src="../src/connector.js"></script>
-<script type="text/javascript" src="../src/action.js"></script>
-<script type="text/javascript" src="../src/command.js"></script>
-<script type="text/javascript" src="../src/text.js"></script>
+<script type="text/javascript" src="../dist/ternlight-1.0.1.min.js"></script>
 <script type="text/javascript" src="myshape.js"></script>
 <style>
      .toolitem{
@@ -24,46 +18,55 @@
          padding-top: 4px;
      }     
 </style>
-<script language="javascript">
-   function onload(){
-       var diagram = new tern.Diagram('mycanvas');
-       var rectShape = new tern.RectangleShape();
-       rectShape.x = 20;
-       rectShape.y = 20;
-       rectShape.width = 100;
-       rectShape.height = 100;       
-       diagram.addChild(rectShape);
-       
-       rectShape = new tern.RectangleShape();
-       rectShape.x = 220;
-       rectShape.y = 120;
-       rectShape.width = 100;
-       rectShape.height = 100;
-       diagram.addChild(rectShape);
-       
-       var line = new tern.Connection( [new tern.Point(70,120),new tern.Point(70,170),new tern.Point(220,170)],
-                                  tern.LineType.RightAngle);
-       diagram.addChild(line);
-       
-       //init toolboxes
-       diagram.toolbox('shape1','drager1',tern.RectangleShape);
-       diagram.toolbox('shape2','drager2',terntest.MyShape);  //custom
-   }
-</script>
-<body onLoad="onload();">
+<body>
 <h2>TernLight - Flow-Diagram Framework</h2>
 
 <div style="width:200px;height:10px;margin-bottom:8px">
 <div id="shape1" class="toolitem" style="float:left">Rectangle</div>
-<div id="drager1" style="width:80px;height:24px;border:2px solid green;"></div>
 
 <div id="shape2" class="toolitem" style="float:right">MyShape</div>
-<div id="drager2" style="width:80px;height:24px;border:2px solid green;"></div>
 </div>
 <br>
+
+<input id="resize" type="button" value="resize" onclick="onResize()">
 
 <div>
 <canvas id="mycanvas" width="700" height="500"/>
 </div>
 </body>
+<script language="javascript">
+   var diagram = null;
+   function onload(){
+       diagram = new tern.Diagram('mycanvas');
+       var rectShape1 = new tern.RectangleShape();
+       rectShape1.x = 20;
+       rectShape1.y = 20;
+       rectShape1.width = 100;
+       rectShape1.height = 100;
+       diagram.addChild(rectShape1);
+       
+       var rectShape2 = new tern.RectangleShape();
+       rectShape2.x = 220;
+       rectShape2.y = 120;
+       rectShape2.width = 100;
+       rectShape2.height = 100;
+       diagram.addChild(rectShape2);
+
+       /*将以上两个Shape对象用连线连接起来*/
+       rectShape1.connectors[1].connectTo(rectShape2.connectors[2],'v');
+
+       //init toolboxes
+       diagram.toolbox('shape1',null,tern.RectangleShape);
+       diagram.toolbox('shape2',null,terntest.MyShape);  //custom	   	  
+   }
+   
+   var w=700,h=500;
+   function onResize(){
+       w += 400;
+       h += 200;
+       diagram.resize(w,h);
+   }
+   
+   onload();
+</script>
 </html>

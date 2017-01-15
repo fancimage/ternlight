@@ -1,0 +1,21 @@
+{
+  "name": "ternlight",
+  "version": "1.0.1",
+  "description": "javascript library to draw flow-chart,base on html5 canvas api.",
+  "homepage": "https://github.com/fancimage/ternlight",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fancimage/ternlight"
+  },
+  "author": {
+    "name": "fancimage",
+    "email": "fancimage@foxmail.com"
+  },
+  "license": "Apache",
+  "devDependencies": {
+    "gulp": "^3.9.1",
+    "gulp-concat": "^2.6.1",
+    "gulp-rename": "^1.2.2",
+    "gulp-uglify": "^2.0.0"
+  }
+}
