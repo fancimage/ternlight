@@ -72,7 +72,7 @@ tern.classdef('UndoManager',{
  * Diagram class
  */ 
 tern.classdef('Diagram',tern.UIContainer,{
-  Diagram: function(canvas){   /*constructor*/
+  Diagram: function(canvas,readonly){   /*constructor*/
     if (typeof canvas === 'string'){
         if (canvas.indexOf("#") == 0) {
 	        canvas = canvas.substring(1);
@@ -92,32 +92,25 @@ tern.classdef('Diagram',tern.UIContainer,{
     this.__selItems = [];
     this.__selConnector = null;
     this.__ghost = new Ghost();
-    this.__timerid = null;
-    this.__interval = -1;
-    this.undoManager = new tern.UndoManager();
-    this._ToolDrager = new tern._ToolDrager(this);
     this._events = new tern.Events();
     
     this.__moveX = 0;
     this.__moveY = 0;
-    
-    //actions
+
+    this.__timerid = null;
+    this.__interval = -1;
+
     this.actions = [];
+    //actions
     this.addAction(new tern.Actions.HitAction());
-    this.addAction(new tern.Actions.MoveAction());
-    this.addAction(new tern.Actions.SectionAction());
-    this.addAction(new tern.Actions.HoverAction());
-              
-    //start to paint frames 
-    this.setMaxFrameRate(20);
+
+    this.__readonly = !readonly;
+    this.setReadonly(readonly);
     
     //handler mouse events
     var _mousehandler = tern.delegate(this._onMouseEvent, this);
     canvas.onmousedown = canvas.onmouseup = canvas.onmousemove =_mousehandler;
-    
-    //handler keyboard events
-    canvas.onkeyup = tern.delegate(this._onKeyUp, this);
-    canvas.onkeydown = tern.delegate(this._onKeyDown, this);
+
     if(0 > canvas.tabIndex) canvas.tabIndex = 0; //get focus!
 
     this._offsetX = null;
@@ -136,7 +129,35 @@ tern.classdef('Diagram',tern.UIContainer,{
       canvas.height = h;
   },
 
-  
+  isReadonly: function(){return this.__readonly;},
+  setReadonly: function(v){
+      if(v === this.__readonly) return;
+
+      var canvas = this.context.canvas;
+      this.actions.splice(1);
+      if(true === v){
+          this.__readonly = true;
+          canvas.onkeyup = canvas.onkeydown = null;
+          this.undoManager = null;
+          this._ToolDrager = null;
+
+          this.setMaxFrameRate(10);
+      } else {
+          this.__readonly = false;
+          this.addAction(new tern.Actions.MoveAction());
+          this.addAction(new tern.Actions.SectionAction());
+          this.addAction(new tern.Actions.HoverAction());
+
+          canvas.onkeyup = tern.delegate(this._onKeyUp, this);
+          canvas.onkeydown = tern.delegate(this._onKeyDown, this);
+
+          this.undoManager = new tern.UndoManager();
+          this._ToolDrager = new tern._ToolDrager(this);
+
+          this.setMaxFrameRate(20);
+      }
+  },
+
   setMaxFrameRate:function(count){
       if(count <= 0) count = 20;
       var interval = 1000/count;
@@ -318,21 +339,28 @@ tern.classdef('Diagram',tern.UIContainer,{
    * Sets the selected diagram-items.
    */    
   setSelectedItems: function(items){
-    if(items == this.__selItems) return;
+    if(items == this.__selItems || (items==null && this.__selItems.length<=0)) return;
     if(items!=null && !(items instanceof Array) ){
         if(!(items instanceof tern.DiagramItem)) return;
         items = [items];
     }
     
     if(this.__selItems.length > 0){
+        var count = 0;
         for(var i=0;i<this.__selItems.length;i++){
             var item = this.__selItems[i];
             if(null == items || items.indexOf(item) < 0){
                 item.onSelectedStateChanged(false);
-            }
+            } else count++;
+        }
+
+        if(count==this.__selItems.length && count==items.length){
+             return; //no change!
         }
     
         this.__selItems.splice(0,this.__selItems.length); //remove all
+    } else if(items.length <=0){
+        return;
     }
     
     if(items != null){
@@ -721,15 +749,7 @@ tern.classdef('DiagramItem', tern.UIContainer,{
   },
 
   addConnector: function(child){
-    if(this.connectors.indexOf(child) >= 0){
-        child.parent = this;
-        return child;
-    }
-    
-    if(child.parent) child.parent.removeConnector(child);
-    this.connectors[this.connectors.length] = child;
-	child.parent = this;
-	return child;
+    return this.insertConnector(-1,child);
   },
 
   insertConnector: function(index,child){
@@ -739,7 +759,9 @@ tern.classdef('DiagramItem', tern.UIContainer,{
     }
     
     if(child.parent) child.parent.removeConnector(child);
-    this.connectors.splice(index, 0, child);
+    if(index<0 || index >= this.connectors.length) this.connectors.push(child);
+    else this.connectors.splice(index, 0, child);
+
 	child.parent = this;	
 	return child;
   },
@@ -1350,7 +1372,13 @@ tern.classdef('RectangleShape',tern.Shape,{
   RectangleShape: function(){
     tern.Shape.call(this);
     this.width = 100;
-    this.height = 100;         
+    this.height = 100;
+
+    //connectors
+    this.addConnector(new tern.ShapeConnector(this.width/2,0));
+    this.addConnector(new tern.ShapeConnector(this.width/2,this.height));
+    this.addConnector(new tern.ShapeConnector(0,this.height/2));
+    this.addConnector(new tern.ShapeConnector(this.width,this.height/2));
   },
 
   paint: function(context) {
@@ -1359,15 +1387,7 @@ tern.classdef('RectangleShape',tern.Shape,{
     context.fillStyle ="#00ffff";
     context.fillRect(0, 0,this.width,this.height);
     context.strokeRect(0,0 ,this.width,this.height);
-    
-    //connectors
-    if(this.connectors.length <= 0){
-        this.addConnector(new tern.ShapeConnector(this.width/2,0));
-        this.addConnector(new tern.ShapeConnector(this.width/2,this.height));
-        this.addConnector(new tern.ShapeConnector(0,this.height/2));
-        this.addConnector(new tern.ShapeConnector(this.width,this.height/2));
-    }
-    
+
     tern.RectangleShape.superClass.paint.call(this,context);
   },
 });

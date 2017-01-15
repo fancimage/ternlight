@@ -140,6 +140,12 @@ tern.classdef('ShapeConnector',tern.Connector,{
 
       this.addAttached(line.connectors[0]);
       ct.addAttached(line.connectors[line.connectors.length-1]);
+
+      var d = this.getDiagram();
+      if(d){
+          d.addChild(line);
+      }
+
       return line;
   },
 

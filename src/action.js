@@ -105,11 +105,27 @@ Actions.classdef('MoveAction',tern.MouseAction,{
     
     var selct = this.diagram._getSelectedConnector();
     if(selct == null){
+        var mw = this.diagram.width,mh = this.diagram.height;
+        var wf=false,hf=false;
+
         var sels = this.diagram.getSelectedItems();
         for(var i=0;i<sels.length;i++){
             sels[i].move(offsetX,offsetY);
+            if(sels[i] instanceof tern.Shape && (sels[i].width && sels[i].height) ){
+                if(sels[i].x+sels[i].width > mw){
+                    mw = sels[i].x+sels[i].width+2;
+                    wf = true;
+                }
+                if(sels[i].y+sels[i].height > mh){
+                    mh = sels[i].y+sels[i].height+2;
+                    hf = true;
+                }
+            }
         }
         this.diagram._events.trigger('onMove',sels);
+        if(wf || hf){
+            this.diagram._events.trigger('onRectOut',mw,mh);
+        }
     }else{
         if(selct instanceof tern.ShapeConnector && (selct.attachable==tern.AttachType.Both || selct.attachable==tern.AttachType.Out)){
             //create new connection
@@ -317,8 +333,8 @@ Actions.classdef('HitAction',tern.MouseAction, {
             this.diagram._setSelectedConnector( null );
             this.diagram.setSelectedItems( item );
         }else{
-            this.diagram.setSelectedItems( null );
             if(item instanceof tern.Connector){
+                this.diagram.setSelectedItems( null );
                 this.diagram._setSelectedConnector( item );
             }else{
                 this.diagram._setSelectedConnector( null );
@@ -326,15 +342,19 @@ Actions.classdef('HitAction',tern.MouseAction, {
                     var pi = item.parent;
                     if(pi instanceof tern.DiagramItem){
                         var sels = this.diagram.getSelectedItems();
-                        if(sels!=null && sels.indexOf(pi)>=0 ) return;
-
-                        this.diagram._setSelectedConnector( null );
-                        this.diagram.setSelectedItems( pi );
+                        if(sels!=null && sels.indexOf(pi)>=0 ) {}
+                        else{
+                            //this.diagram._setSelectedConnector( null );
+                            this.diagram.setSelectedItems( pi );
+                        }
                     }
                     if(true === tern.Text.onclick(item)){
+                        //this.diagram.setSelectedItems( null );
                         this.deActivate();
                         return true;
                     }
+                } else {
+                     this.diagram.setSelectedItems( null );
                 }
             }
         }
